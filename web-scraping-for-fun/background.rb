@@ -4,6 +4,14 @@ require 'json'
 require 'open-uri'
 require 'rbconfig'
 
+WALLPAPER_PATH = File.expand_path(
+  ENV['WALLPAPER_PATH'] || '~/background.jpg'
+)
+ARCHIVE_PATH = File.expand_path(
+  ENV['ARCHIVE_PATH'] || '~/Pictures/EarthPorn'
+)
+
+# Source: https://stackoverflow.com/a/1939351
 def sanitize_filename(filename)
   filename = filename.strip
   # NOTE: File.basename doesn't work right with Windows paths on Unix
@@ -16,43 +24,55 @@ def sanitize_filename(filename)
   filename
 end
 
-def try_really_hard_to_get_threads
+def get_threads
   return JSON.parse(open('https://www.reddit.com/r/EarthPorn/hot.json').read)
-rescue OpenURI::HTTPError => e
-  puts 'GOT A 429 (PROBABLY), SLEEPING A BIT UNTIL TRYING AGAIN'
+rescue OpenURI::HTTPError => error
+  raise error unless error.io.status.first == '429'
+  puts 'Got a 429, guess Reddit is busy right now. I\'ll try again in a bit <3'
   sleep 60
-  return try_really_hard_to_get_threads
+  return get_threads
 end
 
-threads = try_really_hard_to_get_threads
+def get_random_thread
+  get_threads['data']['children'].map { |thread|
+    thread['data'] if thread['data']['domain'] == 'i.redd.it'
+  }.compact.sample
+end
 
-images = []
+def download_and_link(thread)
+  url = thread['url']
+  filename = sanitize_filename([
+    "[#{thread['author']}]",
+    "[#{thread['subreddit']}]",
+    "[#{thread['id']}]",
+    "#{thread['title']}",
+  ].join(' '))
+  filename << ".#{url.split('.').last.split('?').first}"
 
-threads['data']['children'].each do |thread|
-  if thread['data']['domain'] == 'i.redd.it'
-    images << thread['data']
+  puts "Downloading #{filename}"
+
+  File.write(
+    File.join(ARCHIVE_PATH, filename),
+    open(url).read
+  )
+  File.delete(WALLPAPER_PATH) if File.symlink?(WALLPAPER_PATH)
+  File.symlink(
+    File.join(ARCHIVE_PATH, filename),
+    WALLPAPER_PATH
+  )
+end
+
+def set_wallpaper
+  case RbConfig::CONFIG['host_os']
+    when /darwin|mac os/
+      `defaults write com.apple.desktop Background '{default = {ImageFilePath = "~/background.jpg"; };}'`
+      `killall Dock`
+    when /linux/
+      # Nothing to do
+    when /mswin|msys|mingw|cygwin|bccwin|wince|emc/
+      # TODO
   end
 end
 
-image = images.sample(1).first
-url = image['url']
-filename = sanitize_filename([
-  "[#{image['author']}]",
-  "[#{image['subreddit']}]",
-  "[#{image['id']}]",
-  "#{image['title']}",
-].join(' '))
-filename << ".#{url.split('.').last.split('?').first}"
-
-case RbConfig::CONFIG['host_os']
-  when /darwin|mac os/
-    `cd ~/Pictures/EarthPorn && wget "#{url}" -O "#{filename}"`
-    `cp "#{ENV['HOME']}/Pictures/EarthPorn/#{filename}" ~/background.jpg`
-    `defaults write com.apple.desktop Background '{default = {ImageFilePath = "~/background.jpg"; };}'`
-    `killall Dock`
-  when /linux/
-    `cd ~/Pictures && wget "#{url}" -O "#{filename}"`
-    `cp "#{ENV['HOME']}/Pictures/#{filename}" ~/background.jpg`
-  when /mswin|msys|mingw|cygwin|bccwin|wince|emc/
-    # TODO
-end
+download_and_link(get_random_thread)
+set_wallpaper
