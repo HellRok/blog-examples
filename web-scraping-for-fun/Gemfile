@@ -1,0 +1,10 @@
+source 'https://rubygems.org'
+
+# opengraph_data.rb
+gem 'nokogiri'
+
+# thredded_demo.rb
+gem 'mechanize'
+
+# selenium.rb
+gem 'selenium-webdriver'
