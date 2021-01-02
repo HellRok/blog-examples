@@ -25,7 +25,7 @@ def sanitize_filename(filename)
 end
 
 def get_threads
-  JSON.parse(open('https://www.reddit.com/r/EarthPorn/hot.json').read)
+  JSON.parse(URI.open('https://www.reddit.com/r/EarthPorn/hot.json').read)
 rescue OpenURI::HTTPError => error
   raise error unless error.io.status.first == '429'
   puts 'Got a 429, guess Reddit is busy right now. I\'ll try again in a bit <3'
@@ -51,7 +51,7 @@ def download_and_link(thread)
 
   puts "Downloading #{filename}"
 
-  open(url) do |stream|
+  URI.open(url) do |stream|
     open(File.join(ARCHIVE_PATH, filename), "w") do |fout|
       while (buffer = stream.read(8192))
         fout.write buffer
